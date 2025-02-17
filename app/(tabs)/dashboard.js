@@ -94,7 +94,7 @@ const SearchModal = ({ visible, onClose, onSearch, isLoading, searchResults, ren
               <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search food (e.g. 100g chicken)"
+                placeholder="Search food"
                 placeholderTextColor="#666"
                 value={query}
                 onChangeText={(text) => {
@@ -486,9 +486,10 @@ export default function Dashboard() {
   };
 
   const handleSearchButtonPress = () => {
+    console.log('Search button pressed');
+    setIsSearchModalVisible(true);
     setSearchQuery('');
     setSearchResults([]);
-    setIsSearchModalVisible(true);
   };
 
   return (
@@ -520,15 +521,6 @@ export default function Dashboard() {
 
       <ScrollView style={styles.scrollContent}>
         {renderCalendarModal()}
-
-        <SearchModal
-          visible={isSearchModalVisible}
-          onClose={() => setIsSearchModalVisible(false)}
-          onSearch={handleSearch}
-          isLoading={isLoading}
-          searchResults={searchResults}
-          renderFoodItem={renderFoodItem}
-        />
 
         <View style={styles.statsContainer}>
           <View style={styles.mainCircle}>
@@ -654,6 +646,15 @@ export default function Dashboard() {
           ))}
         </View>
       </ScrollView>
+
+      <SearchModal
+        visible={isSearchModalVisible}
+        onClose={() => setIsSearchModalVisible(false)}
+        onSearch={handleSearch}
+        isLoading={isLoading}
+        searchResults={searchResults}
+        renderFoodItem={renderFoodItem}
+      />
     </View>
   );
 }
@@ -677,7 +678,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 10, // Added margin top
+    marginTop: 10,
   },
   greeting: {
     fontSize: 24,
@@ -685,10 +686,8 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   searchButton: {
-    position: 'absolute',
-    right: 20,
-    bottom: -10, // Set to -10 to position at the very bottom
     padding: 10,
+    marginRight: 10,
   },
   date: {
     fontSize: 16,

@@ -64,16 +64,9 @@ export default function FoodDetail() {
   });
 
   // Calculate nutrition values based on serving size
-  const calculateNutrition = (baseValue) => {
-    const numericQuantity = parseFloat(quantity) || 0;
-    const baseServing = food.serving_weight_grams || 100;
-    
-    if (selectedMeasure.measure === 'g') {
-      return (baseValue * numericQuantity) / baseServing;
-    } else {
-      const servingWeight = selectedMeasure.serving_weight || baseServing;
-      return (baseValue * (servingWeight / baseServing) * numericQuantity);
-    }
+  const calculateNutrition = (baseValue, newQuantity, baseQuantity = 100) => {
+    if (!baseValue) return 0;
+    return (baseValue * newQuantity) / baseQuantity;
   };
 
   const handleAddMeal = () => {
@@ -85,10 +78,10 @@ export default function FoodDetail() {
         ? parseFloat(quantity)
         : (selectedMeasure.serving_weight * parseFloat(quantity)),
       mealCategory,
-      nf_calories: calculateNutrition(food.nf_calories),
-      nf_protein: calculateNutrition(food.nf_protein),
-      nf_total_carbohydrate: calculateNutrition(food.nf_total_carbohydrate),
-      nf_total_fat: calculateNutrition(food.nf_total_fat),
+      nf_calories: calculateNutrition(food.nf_calories, parseFloat(quantity), food.serving_weight_grams),
+      nf_protein: calculateNutrition(food.nf_protein, parseFloat(quantity), food.serving_weight_grams),
+      nf_total_carbohydrate: calculateNutrition(food.nf_total_carbohydrate, parseFloat(quantity), food.serving_weight_grams),
+      nf_total_fat: calculateNutrition(food.nf_total_fat, parseFloat(quantity), food.serving_weight_grams),
       thumb: food.photo?.thumb
     };
     
@@ -105,10 +98,10 @@ export default function FoodDetail() {
         ? parseFloat(quantity)
         : (selectedMeasure.serving_weight * parseFloat(quantity)),
       mealCategory,
-      nf_calories: calculateNutrition(food.nf_calories),
-      nf_protein: calculateNutrition(food.nf_protein),
-      nf_total_carbohydrate: calculateNutrition(food.nf_total_carbohydrate),
-      nf_total_fat: calculateNutrition(food.nf_total_fat),
+      nf_calories: calculateNutrition(food.nf_calories, parseFloat(quantity), food.serving_weight_grams),
+      nf_protein: calculateNutrition(food.nf_protein, parseFloat(quantity), food.serving_weight_grams),
+      nf_total_carbohydrate: calculateNutrition(food.nf_total_carbohydrate, parseFloat(quantity), food.serving_weight_grams),
+      nf_total_fat: calculateNutrition(food.nf_total_fat, parseFloat(quantity), food.serving_weight_grams),
       thumb: food.photo?.thumb
     };
 
@@ -118,6 +111,61 @@ export default function FoodDetail() {
     } else {
       Alert.alert('Error', 'Failed to save meal to category');
     }
+  };
+
+  // Update the nutrition facts section
+  const NutritionFacts = ({ food, quantity }) => {
+    // Calculate scaled values based on quantity
+    const calories = calculateNutrition(food.nf_calories, quantity, food.serving_weight_grams);
+    const protein = calculateNutrition(food.nf_protein, quantity, food.serving_weight_grams);
+    const carbs = calculateNutrition(food.nf_total_carbohydrate, quantity, food.serving_weight_grams);
+    const fat = calculateNutrition(food.nf_total_fat, quantity, food.serving_weight_grams);
+
+    return (
+      <View style={styles.nutritionContainer}>
+        <Text style={styles.nutritionTitle}>Nutrition Facts</Text>
+        <Text style={styles.servingSize}>Serving size {quantity} g</Text>
+        
+        <View style={styles.nutritionDivider} />
+        
+        <View style={styles.nutritionRow}>
+          <Text style={styles.nutritionLabel}>Calories</Text>
+          <Text style={styles.nutritionValue}>{Math.round(calories)}</Text>
+        </View>
+        
+        <View style={styles.nutritionDivider} />
+        
+        <View style={styles.nutritionRow}>
+          <Text style={styles.nutritionLabel}>Total Fat</Text>
+          <View style={styles.nutritionValueContainer}>
+            <Text style={styles.nutritionValue}>{Math.round(fat)}g</Text>
+            <Text style={styles.dailyValue}>{Math.round((fat / 65) * 100)}%</Text>
+          </View>
+        </View>
+        
+        <View style={styles.nutritionRow}>
+          <Text style={styles.nutritionLabel}>Total Carbs</Text>
+          <View style={styles.nutritionValueContainer}>
+            <Text style={styles.nutritionValue}>{Math.round(carbs)}g</Text>
+            <Text style={styles.dailyValue}>{Math.round((carbs / 300) * 100)}%</Text>
+          </View>
+        </View>
+        
+        <View style={styles.nutritionRow}>
+          <Text style={styles.nutritionLabel}>Protein</Text>
+          <View style={styles.nutritionValueContainer}>
+            <Text style={styles.nutritionValue}>{Math.round(protein)}g</Text>
+            <Text style={styles.dailyValue}>{Math.round((protein / 50) * 100)}%</Text>
+          </View>
+        </View>
+        
+        <Text style={styles.dailyValueNote}>
+          * The % Daily Value (DV) tells you how much a nutrient in a
+          serving of food contributes to a daily diet. 2,000 calories a day
+          is used for general nutrition advice.
+        </Text>
+      </View>
+    );
   };
 
   return (
@@ -211,70 +259,7 @@ export default function FoodDetail() {
             </View>
 
             {/* Enhanced Nutrition Facts Panel */}
-            <View style={styles.nutritionPanel}>
-              <Text style={styles.nutritionTitle}>Nutrition Facts</Text>
-              <View style={styles.servingInfo}>
-                <Text style={styles.servingText}>
-                  Serving size {quantity} {selectedMeasure.measure}
-                </Text>
-              </View>
-              
-              <View style={styles.dividerThick} />
-              
-              <View style={styles.calorieSection}>
-                <Text style={styles.calorieTitle}>Calories</Text>
-                <Text style={styles.calorieValue}>
-                  {Math.round(calculateNutrition(food.nf_calories))}
-                </Text>
-              </View>
-              
-              <View style={styles.dividerThick} />
-              
-              {/* Daily Value % header */}
-              <Text style={styles.dailyValueHeader}>% Daily Value*</Text>
-              
-              {/* Macronutrients with dividers */}
-              <View style={styles.nutrientRow}>
-                <View style={styles.nutrientMain}>
-                  <Text style={styles.nutrientText}>
-                    Total Fat {Math.round(calculateNutrition(food.nf_total_fat))}g
-                  </Text>
-                </View>
-                <Text style={styles.dailyValueText}>
-                  {Math.round((calculateNutrition(food.nf_total_fat) * 100) / 65)}%
-                </Text>
-              </View>
-              <View style={styles.dividerThin} />
-              
-              <View style={styles.nutrientRow}>
-                <View style={styles.nutrientMain}>
-                  <Text style={styles.nutrientText}>
-                    Total Carbs {Math.round(calculateNutrition(food.nf_total_carbohydrate))}g
-                  </Text>
-                </View>
-                <Text style={styles.dailyValueText}>
-                  {Math.round((calculateNutrition(food.nf_total_carbohydrate) * 100) / 300)}%
-                </Text>
-              </View>
-              <View style={styles.dividerThin} />
-              
-              <View style={styles.nutrientRow}>
-                <View style={styles.nutrientMain}>
-                  <Text style={styles.nutrientText}>
-                    Protein {Math.round(calculateNutrition(food.nf_protein))}g
-                  </Text>
-                </View>
-                <Text style={styles.dailyValueText}>
-                  {Math.round((calculateNutrition(food.nf_protein) * 100) / 50)}%
-                </Text>
-              </View>
-              
-              <View style={styles.dividerThick} />
-              
-              <Text style={styles.disclaimer}>
-                * The % Daily Value (DV) tells you how much a nutrient in a serving of food contributes to a daily diet. 2,000 calories a day is used for general nutrition advice.
-              </Text>
-            </View>
+            <NutritionFacts food={food} quantity={parseInt(quantity)} />
 
             {/* Action Buttons */}
             <View style={styles.buttonContainer}>
@@ -368,7 +353,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 60,
   },
-  nutritionPanel: {
+  nutritionContainer: {
     backgroundColor: '#1c1c1e',
     borderRadius: 12,
     padding: 16,
@@ -380,65 +365,41 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 8,
   },
-  servingInfo: {
-    marginVertical: 8,
-  },
-  servingText: {
+  servingSize: {
     color: '#fff',
     fontSize: 14,
   },
-  dividerThick: {
+  nutritionDivider: {
     height: 8,
     backgroundColor: '#333',
     marginVertical: 8,
   },
-  dividerThin: {
-    height: 1,
-    backgroundColor: '#333',
-    marginVertical: 8,
-  },
-  calorieSection: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  calorieTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  calorieValue: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  dailyValueHeader: {
-    color: '#fff',
-    fontSize: 14,
-    textAlign: 'right',
-    marginBottom: 8,
-  },
-  nutrientRow: {
+  nutritionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 4,
   },
-  nutrientMain: {
-    flex: 1,
-  },
-  nutrientText: {
+  nutritionLabel: {
     color: '#fff',
     fontSize: 16,
   },
-  dailyValueText: {
+  nutritionValueContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  nutritionValue: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  dailyValue: {
     color: '#fff',
     fontSize: 16,
     width: 50,
     textAlign: 'right',
   },
-  disclaimer: {
+  dailyValueNote: {
     color: '#666',
     fontSize: 12,
     marginTop: 8,
