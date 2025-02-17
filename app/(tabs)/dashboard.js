@@ -323,9 +323,14 @@ export default function Dashboard() {
     
     setIsLoading(true);
     try {
+      // Extract the quantity if present, otherwise default to 100
+      const quantityMatch = query.match(/(\d+)g?/);
+      const requestedQuantity = quantityMatch ? parseInt(quantityMatch[1]) : 100;
+      
       // Strip out numbers and 'g' to get the base food name
       const baseQuery = query.replace(/\d+g?\s*/g, '').trim();
       
+      // Get search results from the instant endpoint
       const instantResponse = await fetch(`https://trackapi.nutritionix.com/v2/search/instant?query=${encodeURIComponent(baseQuery)}`, {
         method: 'GET',
         headers: {
@@ -335,30 +340,48 @@ export default function Dashboard() {
       });
 
       const instantData = await instantResponse.json();
-      console.log('Instant Search API Response:', instantData);
       
-      // Extract the quantity if present, otherwise default to 100
-      const quantityMatch = query.match(/(\d+)g?/);
-      const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 100;
-      
-      // Combine and process both common and branded foods
-      const commonFoods = (instantData.common || []).map(food => ({
-        ...food,
-        serving_qty: quantity,
-        serving_unit: 'g',
-        serving_weight_grams: quantity,
-        isInstantSearch: true
+      // Process all common foods (up to first 5 results)
+      const commonFoods = await Promise.all((instantData.common || []).slice(0, 5).map(async (food) => {
+        try {
+          const nlResponse = await fetch('https://trackapi.nutritionix.com/v2/natural/nutrients', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-app-id': NUTRITIONIX_APP_ID,
+              'x-app-key': NUTRITIONIX_API_KEY,
+            },
+            body: JSON.stringify({
+              query: food.food_name,
+            }),
+          });
+
+          const nlData = await nlResponse.json();
+          if (nlData.foods && nlData.foods.length > 0) {
+            const baseFood = nlData.foods[0];
+            const baseGrams = baseFood.serving_weight_grams;
+            const scaleFactor = requestedQuantity / baseGrams;
+
+            // Scale all nutrition values based on requested quantity
+            return {
+              ...food,
+              ...baseFood,
+              serving_qty: requestedQuantity,
+              serving_unit: 'g',
+              serving_weight_grams: requestedQuantity,
+              nf_calories: Math.round(baseFood.nf_calories * scaleFactor),
+              nf_protein: Math.round(baseFood.nf_protein * scaleFactor),
+              nf_total_carbohydrate: Math.round(baseFood.nf_total_carbohydrate * scaleFactor),
+              nf_total_fat: Math.round(baseFood.nf_total_fat * scaleFactor)
+            };
+          }
+        } catch (error) {
+          console.error('Error fetching nutrition data:', error);
+        }
+        return null;
       }));
 
-      const brandedFoods = (instantData.branded || []).map(food => ({
-        ...food,
-        serving_qty: quantity,
-        serving_unit: 'g',
-        serving_weight_grams: quantity,
-        isInstantSearch: true
-      }));
-      
-      setSearchResults([...commonFoods, ...brandedFoods]);
+      setSearchResults(commonFoods.filter(Boolean));
 
     } catch (error) {
       console.error('Error searching foods:', error);
@@ -438,11 +461,22 @@ export default function Dashboard() {
   );
 
   const handleFoodSelect = (food) => {
+    // Ensure we have all the required nutrition data
+    const foodWithNutrition = {
+      ...food,
+      nf_calories: food.nf_calories || 0,
+      nf_total_fat: food.nf_total_fat || 0,
+      nf_total_carbohydrate: food.nf_total_carbohydrate || 0,
+      nf_protein: food.nf_protein || 0,
+      serving_weight_grams: food.serving_weight_grams || 100,
+      serving_qty: food.serving_qty || 1,
+      serving_unit: food.serving_unit || 'g'
+    };
+
+    setIsSearchModalVisible(false);
     router.push({
       pathname: '/food-detail',
-      params: {
-        food: JSON.stringify(food) // Stringify the food object
-      }
+      params: { food: JSON.stringify(foodWithNutrition) }
     });
   };
 

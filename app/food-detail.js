@@ -32,8 +32,8 @@ export default function FoodDetail() {
       parsedFood = params.food;
     }
     
-    // Get the serving_qty from the API response
-    const qty = parsedFood.serving_qty?.toString() || '1';
+    // Use the serving quantity from the parsed food data
+    const qty = parsedFood.serving_qty?.toString() || '100';
     
     return { food: parsedFood, initialQuantity: qty };
   }, [params.food]);
@@ -64,9 +64,11 @@ export default function FoodDetail() {
   });
 
   // Calculate nutrition values based on serving size
-  const calculateNutrition = (baseValue, newQuantity, baseQuantity = 100) => {
-    if (!baseValue) return 0;
-    return (baseValue * newQuantity) / baseQuantity;
+  const calculateNutrition = (baseValue, newQuantity, baseQuantity) => {
+    if (!baseValue || !baseQuantity) return 0;
+    // Convert everything to grams for consistent calculations
+    const scaleFactor = newQuantity / baseQuantity;
+    return baseValue * scaleFactor;
   };
 
   const handleAddMeal = () => {
@@ -115,11 +117,21 @@ export default function FoodDetail() {
 
   // Update the nutrition facts section
   const NutritionFacts = ({ food, quantity }) => {
-    // Calculate scaled values based on quantity
-    const calories = calculateNutrition(food.nf_calories, quantity, food.serving_weight_grams);
-    const protein = calculateNutrition(food.nf_protein, quantity, food.serving_weight_grams);
-    const carbs = calculateNutrition(food.nf_total_carbohydrate, quantity, food.serving_weight_grams);
-    const fat = calculateNutrition(food.nf_total_fat, quantity, food.serving_weight_grams);
+    // Get the base values from the original serving
+    const baseQuantity = food.serving_weight_grams;
+    
+    // Calculate scaled values based on the new quantity
+    const calories = calculateNutrition(food.nf_calories, quantity, baseQuantity);
+    const protein = calculateNutrition(food.nf_protein, quantity, baseQuantity);
+    const carbs = calculateNutrition(food.nf_total_carbohydrate, quantity, baseQuantity);
+    const fat = calculateNutrition(food.nf_total_fat, quantity, baseQuantity);
+
+    console.log('Base values:', {
+      baseQuantity,
+      originalCalories: food.nf_calories,
+      newQuantity: quantity,
+      scaledCalories: calories
+    });
 
     return (
       <View style={styles.nutritionContainer}>
@@ -168,6 +180,12 @@ export default function FoodDetail() {
     );
   };
 
+  // Update the quantity change handler
+  const handleQuantityChange = (text) => {
+    const newQuantity = text.replace(/[^0-9]/g, '');
+    setQuantity(newQuantity);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -193,7 +211,7 @@ export default function FoodDetail() {
                 <TextInput
                   style={styles.quantityInput}
                   value={quantity}
-                  onChangeText={setQuantity}
+                  onChangeText={handleQuantityChange}
                   keyboardType="numeric"
                   placeholder="1"
                   placeholderTextColor="#666"
