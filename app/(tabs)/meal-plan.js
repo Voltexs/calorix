@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert } from 'react-native';
 import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useNutrition } from '../context/NutritionContext';
@@ -32,19 +32,40 @@ const getCategoryIcon = (category) => {
 };
 
 export default function MealPlan() {
-  const { dailyNutrition, loadHistoricalNutrition } = useNutrition();
+  const { dailyNutrition, loadHistoricalNutrition, removeMeal } = useNutrition();
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [selectedDayMeals, setSelectedDayMeals] = useState(dailyNutrition);
+  const [selectedDayMeals, setSelectedDayMeals] = useState({
+    meals: [],
+    totals: {
+      calories: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0
+    }
+  });
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
   useEffect(() => {
-    loadDayMeals(selectedDate);
-  }, [selectedDate]);
+    if (selectedDate === dailyNutrition.date) {
+      setSelectedDayMeals(dailyNutrition);
+    }
+  }, [dailyNutrition, selectedDate]);
 
-  const loadDayMeals = async (date) => {
-    const meals = await loadHistoricalNutrition(date);
-    setSelectedDayMeals(meals);
-  };
+  useEffect(() => {
+    const loadMeals = async () => {
+      const meals = await loadHistoricalNutrition(selectedDate);
+      setSelectedDayMeals(meals || {
+        meals: [],
+        totals: {
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0
+        }
+      });
+    };
+    loadMeals();
+  }, [selectedDate]);
 
   const getDaysInMonth = (month, year) => {
     return new Date(year, month + 1, 0).getDate();
@@ -80,7 +101,7 @@ export default function MealPlan() {
   };
 
   const renderDay = (date) => {
-    if (!date) return <View style={styles.emptyDay} />;
+    if (!date) return <View key="empty-day" style={styles.emptyDay} />;
     
     const dateString = date.toISOString().split('T')[0];
     const isSelected = dateString === selectedDate;
@@ -105,30 +126,65 @@ export default function MealPlan() {
     );
   };
 
+  const handleDeleteMeal = async (meal, index) => {
+    Alert.alert(
+      "Delete Meal",
+      "Are you sure you want to delete this meal?",
+      [
+        { 
+          text: "Cancel", 
+          style: "cancel"
+        },
+        { 
+          text: "Delete", 
+          style: "destructive",
+          onPress: async () => {
+            await removeMeal(index);
+            // Refresh the meals after deletion
+            const updatedMeals = await loadHistoricalNutrition(selectedDate);
+            setSelectedDayMeals(updatedMeals || {
+              meals: [],
+              totals: {
+                calories: 0,
+                protein: 0,
+                carbs: 0,
+                fat: 0
+              }
+            });
+          }
+        }
+      ],
+      {
+        userInterfaceStyle: 'dark'
+      }
+    );
+  };
+
   const renderMealCategory = (category, meals) => (
-    <View style={styles.categoryCard}>
+    <View key={`category-${category}`} style={styles.mealCategory}>
       <View style={styles.categoryHeader}>
-        <View style={styles.categoryLeft}>
-          <Ionicons 
-            name={getCategoryIcon(category)} 
-            size={24} 
-            color="#0A84FF" 
-          />
+        <View style={styles.categoryTitleContainer}>
+          <Ionicons name={getCategoryIcon(category)} size={24} color="#0A84FF" />
           <Text style={styles.categoryTitle}>{category}</Text>
         </View>
-        <Text style={styles.mealCount}>
-          {meals.length} {meals.length === 1 ? 'meal' : 'meals'}
-        </Text>
       </View>
-      
       {meals.map((meal, index) => (
-        <View key={index} style={styles.mealItem}>
-          <View style={styles.mealInfo}>
-            <Text style={styles.mealName}>{meal.food_name}</Text>
+        <View key={`${category}-meal-${index}-${meal.food_name}`} style={styles.meal}>
+          <View style={styles.mealContent}>
+            <Text style={styles.mealName}>{meal.food_name} ({meal.serving_weight_grams}g)</Text>
             <Text style={styles.mealMacros}>
-              {Math.round(meal.nf_calories)} cal • {Math.round(meal.nf_protein)}g protein
+              {Math.round(meal?.nf_calories || 0)} cal • 
+              {Math.round(meal?.nf_protein || 0)}P • 
+              {Math.round(meal?.nf_total_carbohydrate || 0)}C • 
+              {Math.round(meal?.nf_total_fat || 0)}F
             </Text>
           </View>
+          <TouchableOpacity 
+            style={styles.deleteButton}
+            onPress={() => handleDeleteMeal(meal, index)}
+          >
+            <Ionicons name="trash-outline" size={20} color="#FF453A" />
+          </TouchableOpacity>
         </View>
       ))}
     </View>
@@ -349,37 +405,56 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#2c2c2e',
   },
   categoryLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  categoryTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   categoryTitle: {
     color: '#fff',
     fontSize: 18,
-    fontWeight: 'bold',
-    marginLeft: 10,
+    fontWeight: '600',
   },
   mealCount: {
     color: '#666',
     fontSize: 12,
   },
-  mealItem: {
-    marginBottom: 10,
-  },
-  mealInfo: {
+  meal: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2c2c2e',
+  },
+  mealContent: {
+    flex: 1,
   },
   mealName: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    marginBottom: 4,
   },
   mealMacros: {
     color: '#666',
-    fontSize: 12,
+    fontSize: 14,
+  },
+  mealCategory: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 15,
+    padding: 15,
+    marginBottom: 20,
+  },
+  deleteButton: {
+    padding: 8,
+    marginLeft: 8,
   },
 }); 
