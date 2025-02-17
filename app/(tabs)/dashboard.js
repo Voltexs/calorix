@@ -66,6 +66,66 @@ const CircularProgress = ({ color, value, goal, label, unit, size, isMain = fals
   );
 };
 
+const SearchModal = ({ visible, onClose, onSearch, isLoading, searchResults, renderFoodItem }) => {
+  const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    if (!visible) {
+      setQuery('');
+    }
+  }, [visible]);
+
+  const handleClose = () => {
+    setQuery('');
+    onClose();
+  };
+
+  return (
+    <Modal
+      animationType="fade"
+      transparent={true}
+      visible={visible}
+      onRequestClose={handleClose}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.searchHeader}>
+            <View style={styles.searchInputContainer}>
+              <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search food (e.g. 100g chicken)"
+                placeholderTextColor="#666"
+                value={query}
+                onChangeText={(text) => {
+                  setQuery(text);
+                  onSearch(text);
+                }}
+                autoFocus
+              />
+            </View>
+            <TouchableOpacity onPress={handleClose}>
+              <Text style={styles.cancelButton}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+          
+          {isLoading ? (
+            <ActivityIndicator style={styles.loader} color="#0A84FF" />
+          ) : (
+            <ScrollView style={styles.resultsContainer}>
+              {searchResults.map((item, index) => (
+                <View key={index}>
+                  {renderFoodItem(item)}
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
 export default function Dashboard() {
   const router = useRouter();
   const { dailyNutrition, savedMeals, deleteSavedMeal } = useNutrition();
@@ -74,8 +134,8 @@ export default function Dashboard() {
   const [newMealName, setNewMealName] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [isCreatingMeal, setIsCreatingMeal] = useState(false);
+  const [isSearchModalVisible, setIsSearchModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isCalendarVisible, setIsCalendarVisible] = useState(false);
@@ -263,35 +323,10 @@ export default function Dashboard() {
     
     setIsLoading(true);
     try {
-      // For queries with numbers (quantities), use nutrients API
-      if (query.match(/\d/)) {
-        const nlResponse = await fetch('https://trackapi.nutritionix.com/v2/natural/nutrients', {
-          method: 'POST',
-          headers: {
-            'x-app-id': NUTRITIONIX_APP_ID,
-            'x-app-key': NUTRITIONIX_API_KEY,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query: query
-          }),
-        });
-
-        const nlData = await nlResponse.json();
-        console.log('Natural Language API Response:', nlData); // Debug log
-        
-        if (nlResponse.ok && nlData.foods) {
-          setSearchResults(nlData.foods.map(food => ({
-            ...food,
-            isNaturalLanguage: true
-          })));
-        }
-        setIsLoading(false);
-        return;
-      }
-
-      // For partial searches without quantities, use instant search
-      const instantResponse = await fetch(`https://trackapi.nutritionix.com/v2/search/instant?query=${encodeURIComponent(query)}`, {
+      // Strip out numbers and 'g' to get the base food name
+      const baseQuery = query.replace(/\d+g?\s*/g, '').trim();
+      
+      const instantResponse = await fetch(`https://trackapi.nutritionix.com/v2/search/instant?query=${encodeURIComponent(baseQuery)}`, {
         method: 'GET',
         headers: {
           'x-app-id': NUTRITIONIX_APP_ID,
@@ -300,15 +335,30 @@ export default function Dashboard() {
       });
 
       const instantData = await instantResponse.json();
-      console.log('Instant Search API Response:', instantData); // Debug log
+      console.log('Instant Search API Response:', instantData);
       
-      const commonFoods = (instantData.common || [])
-        .filter(food => food.food_name.toLowerCase().includes(query.toLowerCase()));
+      // Extract the quantity if present, otherwise default to 100
+      const quantityMatch = query.match(/(\d+)g?/);
+      const quantity = quantityMatch ? parseInt(quantityMatch[1]) : 100;
       
-      setSearchResults(commonFoods.map(food => ({
+      // Combine and process both common and branded foods
+      const commonFoods = (instantData.common || []).map(food => ({
         ...food,
+        serving_qty: quantity,
+        serving_unit: 'g',
+        serving_weight_grams: quantity,
         isInstantSearch: true
-      })));
+      }));
+
+      const brandedFoods = (instantData.branded || []).map(food => ({
+        ...food,
+        serving_qty: quantity,
+        serving_unit: 'g',
+        serving_weight_grams: quantity,
+        isInstantSearch: true
+      }));
+      
+      setSearchResults([...commonFoods, ...brandedFoods]);
 
     } catch (error) {
       console.error('Error searching foods:', error);
@@ -337,67 +387,15 @@ export default function Dashboard() {
     };
   }, []);
 
-  const renderFoodItem = (item) => {
-    if (item.isNaturalLanguage) {
-      return (
-        <TouchableOpacity 
-          style={styles.resultItem}
-          onPress={() => {
-            handleFoodSelect(item);
-          }}
-        >
-          <View style={styles.foodHeader}>
-            <Text style={styles.foodName}>
-              {`${item.serving_qty}${item.serving_unit} ${item.food_name}`}
-            </Text>
-            <Text style={styles.calories}>
-              {item.nf_calories ? `${Math.round(item.nf_calories)} cal` : '0 cal'}
-            </Text>
-          </View>
-          
-          <View style={styles.macrosContainer}>
-            <View style={styles.macroItem}>
-              <Text style={styles.macroValue}>
-                {item.nf_protein ? `${Math.round(item.nf_protein)}g` : '0g'}
-              </Text>
-              <Text style={styles.macroLabel}>Protein</Text>
-            </View>
-            <View style={styles.macroItem}>
-              <Text style={styles.macroValue}>
-                {item.nf_total_carbohydrate ? `${Math.round(item.nf_total_carbohydrate)}g` : '0g'}
-              </Text>
-              <Text style={styles.macroLabel}>Carbs</Text>
-            </View>
-            <View style={styles.macroItem}>
-              <Text style={styles.macroValue}>
-                {item.nf_total_fat ? `${Math.round(item.nf_total_fat)}g` : '0g'}
-              </Text>
-              <Text style={styles.macroLabel}>Fat</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      );
-    }
-
-    if (item.isInstantSearch) {
-      return (
-        <TouchableOpacity 
-          style={styles.instantResultItem}
-          onPress={() => {
-            setSearchQuery(item.food_name);
-            searchFood(item.food_name);
-          }}
-        >
-          <Text style={styles.instantFoodName}>
-            {item.food_name.charAt(0).toUpperCase() + item.food_name.slice(1)}
-          </Text>
-          <Text style={styles.instantServingUnit}>Tap to add quantity</Text>
-        </TouchableOpacity>
-      );
-    }
-
-    return null;
-  };
+  const renderFoodItem = (item) => (
+    <TouchableOpacity 
+      style={styles.foodItem} 
+      onPress={() => handleFoodSelect(item)}
+    >
+      <Text style={styles.foodName}>{item.food_name}</Text>
+      <Text style={styles.foodQuantity}>{item.serving_weight_grams}g</Text>
+    </TouchableOpacity>
+  );
 
   const renderCalendarModal = () => (
     <Modal
@@ -487,6 +485,12 @@ export default function Dashboard() {
     }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
   };
 
+  const handleSearchButtonPress = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearchModalVisible(true);
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -499,10 +503,10 @@ export default function Dashboard() {
         <View style={styles.headerTop}>
           <Text style={styles.greeting}>Hi, {formData.name || 'User'}</Text>
           <TouchableOpacity 
-            style={styles.searchIcon}
-            onPress={() => setIsSearching(true)}
+            style={styles.searchButton}
+            onPress={handleSearchButtonPress}
           >
-            <Ionicons name="search" size={24} color="#fff" />
+            <Ionicons name="search" size={24} color="#666" />
           </TouchableOpacity>
         </View>
         <Text style={styles.date}>
@@ -517,40 +521,14 @@ export default function Dashboard() {
       <ScrollView style={styles.scrollContent}>
         {renderCalendarModal()}
 
-        {isSearching && (
-          <View style={styles.searchContainer}>
-            <View style={styles.searchInputContainer}>
-              <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search food (e.g. 100g chicken)"
-                placeholderTextColor="#666"
-                value={searchQuery}
-                onChangeText={handleSearch}
-                autoFocus
-              />
-              <TouchableOpacity onPress={() => {
-                setIsSearching(false);
-                setSearchQuery('');
-                setSearchResults([]);
-              }}>
-                <Text style={styles.cancelButton}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-
-            {isLoading ? (
-              <ActivityIndicator style={styles.loader} color="#0A84FF" />
-            ) : (
-              <ScrollView style={styles.resultsContainer}>
-                {searchResults.map((item, index) => (
-                  <View key={index}>
-                    {renderFoodItem(item)}
-                  </View>
-                ))}
-              </ScrollView>
-            )}
-          </View>
-        )}
+        <SearchModal
+          visible={isSearchModalVisible}
+          onClose={() => setIsSearchModalVisible(false)}
+          onSearch={handleSearch}
+          isLoading={isLoading}
+          searchResults={searchResults}
+          renderFoodItem={renderFoodItem}
+        />
 
         <View style={styles.statsContainer}>
           <View style={styles.mainCircle}>
@@ -706,8 +684,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
-  searchIcon: {
-    padding: 8,
+  searchButton: {
+    position: 'absolute',
+    right: 20,
+    bottom: -10, // Set to -10 to position at the very bottom
+    padding: 10,
   },
   date: {
     fontSize: 16,
@@ -980,22 +961,57 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-start',
   },
   modalContent: {
-    width: '90%',
-    maxHeight: '80%',
     backgroundColor: '#1a1a1a',
-    borderRadius: 20,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    paddingTop: Platform.OS === 'ios' ? 50 : 20,
+    maxHeight: '80%',
+  },
+  searchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingBottom: 15,
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#333',
+    borderRadius: 10,
+    marginRight: 10,
+    paddingHorizontal: 10,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 16,
+    padding: 10,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  cancelButton: {
+    color: '#0A84FF',
+    fontSize: 16,
+  },
+  resultsContainer: {
+    maxHeight: '100%',
+  },
+  loader: {
     padding: 20,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20,
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
   },
   modalTitle: {
     color: '#fff',
@@ -1065,5 +1081,23 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     letterSpacing: 0.5,
+  },
+  searchModal: {
+    margin: 20,
+    marginTop: 50,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    overflow: 'hidden',
+    maxHeight: '80%',
+  },
+  foodItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#333',
+  },
+  foodQuantity: {
+    color: '#666',
+    fontSize: 14,
+    marginTop: 4,
   },
 }); 
