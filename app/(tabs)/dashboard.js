@@ -259,42 +259,24 @@ export default function Dashboard() {
           {category.meals.length > 0 ? (
             category.meals.map((meal, index) => (
               <View key={index} style={styles.mealItem}>
-                <View style={styles.mealInfo}>
-                  <Text style={styles.mealName}>{meal.food_name}</Text>
-                  <View style={styles.macrosContainer}>
-                    <Text style={styles.macroItem}>
-                      <Text style={styles.macroValue}>{Math.round(meal.nf_calories)}</Text>
-                      <Text style={styles.macroUnit}> cal</Text>
-                    </Text>
-                    <Text style={styles.macroSeparator}>•</Text>
-                    <Text style={styles.macroItem}>
-                      <Text style={styles.macroValue}>{Math.round(meal.nf_protein)}</Text>
-                      <Text style={styles.macroUnit}>g P</Text>
-                    </Text>
-                    <Text style={styles.macroSeparator}>•</Text>
-                    <Text style={styles.macroItem}>
-                      <Text style={styles.macroValue}>{Math.round(meal.nf_total_carbohydrate)}</Text>
-                      <Text style={styles.macroUnit}>g C</Text>
-                    </Text>
-                    <Text style={styles.macroSeparator}>•</Text>
-                    <Text style={styles.macroItem}>
-                      <Text style={styles.macroValue}>{Math.round(meal.nf_total_fat)}</Text>
-                      <Text style={styles.macroUnit}>g F</Text>
-                    </Text>
-                  </View>
+                <View style={styles.mealItemLeft}>
+                  <Text style={styles.mealName}>{meal.food_name} ({meal.serving_weight_grams}g)</Text>
+                  <Text style={styles.macros}>
+                    {Math.round(meal.nf_calories)} cal • {Math.round(meal.nf_protein)}P • {Math.round(meal.nf_total_carbohydrate)}C • {Math.round(meal.nf_total_fat)}F
+                  </Text>
                 </View>
-                <View style={styles.mealActions}>
+                <View style={styles.mealItemRight}>
                   <TouchableOpacity 
-                    style={styles.actionButton}
-                    onPress={() => handleEditMeal(meal, category)}
+                    style={styles.editButton}
+                    onPress={() => handleEditMeal(meal)}
                   >
                     <Ionicons name="pencil" size={20} color="#0A84FF" />
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    style={styles.actionButton}
-                    onPress={() => handleDeleteMeal(category, index)}
+                    style={styles.deleteButton}
+                    onPress={() => handleDeleteMeal(meal)}
                   >
-                    <Ionicons name="trash" size={20} color="#FF453A" />
+                    <Ionicons name="trash-outline" size={20} color="#FF453A" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -341,8 +323,8 @@ export default function Dashboard() {
 
       const instantData = await instantResponse.json();
       
-      // Process all common foods (up to first 5 results)
-      const commonFoods = await Promise.all((instantData.common || []).slice(0, 5).map(async (food) => {
+      // Process all common foods (up to first 10 results instead of 5)
+      const commonFoods = await Promise.all((instantData.common || []).slice(0, 10).map(async (food) => {
         try {
           const nlResponse = await fetch('https://trackapi.nutritionix.com/v2/natural/nutrients', {
             method: 'POST',
@@ -415,8 +397,12 @@ export default function Dashboard() {
       style={styles.foodItem} 
       onPress={() => handleFoodSelect(item)}
     >
-      <Text style={styles.foodName}>{item.food_name}</Text>
-      <Text style={styles.foodQuantity}>{item.serving_weight_grams}g</Text>
+      <View style={styles.foodItemContent}>
+        <Text style={styles.foodName}>{item.food_name}</Text>
+        <Text style={styles.foodDetails}>
+          {Math.round(item.nf_calories)} cal • {item.serving_weight_grams}g
+        </Text>
+      </View>
     </TouchableOpacity>
   );
 
@@ -480,7 +466,7 @@ export default function Dashboard() {
     });
   };
 
-  const handleDeleteMeal = async (category, index) => {
+  const handleDeleteMeal = async (meal) => {
     Alert.alert(
       "Delete Meal",
       "Are you sure you want to delete this meal?",
@@ -492,7 +478,7 @@ export default function Dashboard() {
         { 
           text: "Delete", 
           style: "destructive",
-          onPress: () => deleteSavedMeal(category, index)
+          onPress: () => deleteSavedMeal(meal.mealCategory, meal)
         }
       ],
       {
@@ -501,10 +487,10 @@ export default function Dashboard() {
     );
   };
 
-  const handleEditMeal = (meal, category) => {
+  const handleEditMeal = (meal) => {
     router.push({
       pathname: '/food-detail',
-      params: { food: JSON.stringify(meal), editMode: true, category }
+      params: { food: JSON.stringify(meal), editMode: true, category: meal.mealCategory }
     });
   };
 
@@ -636,42 +622,24 @@ export default function Dashboard() {
               
               {expandedCategory === category && meals.map((meal, index) => (
                 <View key={index} style={styles.mealItem}>
-                  <View style={styles.mealInfo}>
-                    <Text style={styles.mealName}>{meal.food_name}</Text>
-                    <View style={styles.macrosContainer}>
-                      <Text style={styles.macroItem}>
-                        <Text style={styles.macroValue}>{Math.round(meal.nf_calories)}</Text>
-                        <Text style={styles.macroUnit}> cal</Text>
-                      </Text>
-                      <Text style={styles.macroSeparator}>•</Text>
-                      <Text style={styles.macroItem}>
-                        <Text style={styles.macroValue}>{Math.round(meal.nf_protein)}</Text>
-                        <Text style={styles.macroUnit}>g P</Text>
-                      </Text>
-                      <Text style={styles.macroSeparator}>•</Text>
-                      <Text style={styles.macroItem}>
-                        <Text style={styles.macroValue}>{Math.round(meal.nf_total_carbohydrate)}</Text>
-                        <Text style={styles.macroUnit}>g C</Text>
-                      </Text>
-                      <Text style={styles.macroSeparator}>•</Text>
-                      <Text style={styles.macroItem}>
-                        <Text style={styles.macroValue}>{Math.round(meal.nf_total_fat)}</Text>
-                        <Text style={styles.macroUnit}>g F</Text>
-                      </Text>
-                    </View>
+                  <View style={styles.mealItemLeft}>
+                    <Text style={styles.mealName}>{meal.food_name} ({meal.serving_weight_grams}g)</Text>
+                    <Text style={styles.macros}>
+                      {Math.round(meal.nf_calories)} cal • {Math.round(meal.nf_protein)}P • {Math.round(meal.nf_total_carbohydrate)}C • {Math.round(meal.nf_total_fat)}F
+                    </Text>
                   </View>
-                  <View style={styles.mealActions}>
+                  <View style={styles.mealItemRight}>
                     <TouchableOpacity 
-                      style={styles.actionButton}
-                      onPress={() => handleEditMeal(meal, category)}
+                      style={styles.editButton}
+                      onPress={() => handleEditMeal(meal)}
                     >
                       <Ionicons name="pencil" size={20} color="#0A84FF" />
                     </TouchableOpacity>
                     <TouchableOpacity 
-                      style={styles.actionButton}
-                      onPress={() => handleDeleteMeal(category, index)}
+                      style={styles.deleteButton}
+                      onPress={() => handleDeleteMeal(meal)}
                     >
-                      <Ionicons name="trash" size={20} color="#FF453A" />
+                      <Ionicons name="trash-outline" size={20} color="#FF453A" />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -778,11 +746,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 4,
   },
+  foodItem: {
+    padding: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2c2c2e',
+  },
+  foodItemContent: {
+    flexDirection: 'column',
+    gap: 4,
+  },
   foodName: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '600',
-    flex: 1,
+  },
+  foodDetails: {
+    color: '#666',
+    fontSize: 14,
   },
   calories: {
     color: '#0A84FF',
@@ -883,19 +862,26 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#2c2c2e',
   },
-  mealInfo: {
+  mealItemLeft: {
     flex: 1,
+  },
+  mealItemRight: {
+    flexDirection: 'row',
+    gap: 12,
   },
   mealName: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '500',
   },
-  mealActions: {
-    flexDirection: 'row',
-    gap: 12,
+  macros: {
+    color: '#666',
+    fontSize: 14,
   },
-  actionButton: {
+  editButton: {
+    padding: 8,
+  },
+  deleteButton: {
     padding: 8,
   },
   circleContainer: {
@@ -1126,7 +1112,7 @@ const styles = StyleSheet.create({
   foodItem: {
     padding: 15,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: '#2c2c2e',
   },
   foodQuantity: {
     color: '#666',
