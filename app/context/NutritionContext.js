@@ -237,13 +237,18 @@ export function NutritionProvider({ children }) {
       const mealWithCategory = {
         ...meal,
         id: `${meal.food_name}-${Date.now()}`,
-        mealCategory: meal.mealCategory || mealCategory || 'Breakfast', // Prioritize existing category
+        mealCategory: mealCategory,
         timestamp: new Date().toISOString()
       };
       
       // Update meals and totals
       dailyData.meals.push(mealWithCategory);
-      dailyData.totals = calculateTotals(dailyData.meals);
+      dailyData.totals = {
+        calories: dailyData.totals.calories + (meal.nf_calories || 0),
+        protein: dailyData.totals.protein + (meal.nf_protein || 0),
+        carbs: dailyData.totals.carbs + (meal.nf_total_carbohydrate || 0),
+        fat: dailyData.totals.fat + (meal.nf_total_fat || 0)
+      };
 
       // Save with the correct key format
       await AsyncStorage.setItem(`nutrition_${today}`, JSON.stringify(dailyData));
@@ -320,19 +325,10 @@ export function NutritionProvider({ children }) {
 
   const loadHistoricalNutrition = async (date) => {
     try {
-      const stored = await AsyncStorage.getItem(`nutrition_${date}`);
-      return stored ? JSON.parse(stored) : {
-        date,
-        meals: [],
-        totals: {
-          calories: 0,
-          protein: 0,
-          carbs: 0,
-          fat: 0
-        }
-      };
+      const data = await AsyncStorage.getItem(`nutrition_${date}`);
+      return data ? JSON.parse(data) : { meals: [], totals: {}, goals: {} };
     } catch (error) {
-      console.error('Error loading historical nutrition:', error);
+      console.error('Error loading nutrition:', error);
       return null;
     }
   };
