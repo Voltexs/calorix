@@ -148,6 +148,18 @@ export function NutritionProvider({ children }) {
     try {
       const categoryKey = category.toLowerCase().replace(/\s+/g, '');
       
+      // If we're just creating a category (no meal data)
+      if (!meal) {
+        const newMeals = {
+          ...savedMeals,
+          [categoryKey]: []
+        };
+        
+        await AsyncStorage.setItem('savedMeals', JSON.stringify(newMeals));
+        setSavedMeals(newMeals);
+        return true;
+      }
+
       // Check if category already exists
       if (savedMeals[categoryKey]) {
         // Check if meal already exists in category

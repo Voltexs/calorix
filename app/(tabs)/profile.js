@@ -4,19 +4,25 @@ import { StatusBar } from 'expo-status-bar';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNutrition } from '../context/NutritionContext';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function Profile() {
   const router = useRouter();
+  const { loadHistoricalNutrition } = useNutrition();
   const [stats, setStats] = useState({
     name: '',
     weight: '',
     height: '',
     age: '',
     gender: '',
-    goal: ''
+    goal: '',
+    bodyFat: '',
+    muscleWeight: ''
   });
+  const [isDatePickerVisible, setDatePickerVisible] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
-  // Load user data when component mounts
   useEffect(() => {
     loadUserData();
   }, []);
@@ -66,6 +72,89 @@ export default function Profile() {
     );
   };
 
+  const menuItems = [
+    { 
+      icon: 'camera-outline', 
+      title: 'Progress Photos', 
+      subtitle: 'Track your body transformation',
+      onPress: () => router.push('/progress-photos')
+    },
+    { 
+      icon: 'stats-chart-outline', 
+      title: 'Body Stats', 
+      subtitle: `BF: ${stats.bodyFat || '--'}% • Muscle: ${stats.muscleWeight || '--'}kg`,
+      onPress: () => router.push('/body-stats')
+    },
+    { 
+      icon: 'document-text-outline', 
+      title: 'Daily Report', 
+      subtitle: 'View your nutrition history',
+      onPress: showDatePicker 
+    },
+    { 
+      icon: 'settings-outline', 
+      title: 'Account Settings', 
+      subtitle: 'Update profile, goals & preferences',
+      onPress: () => router.push('/account-settings')
+    },
+    { 
+      icon: 'log-out-outline', 
+      title: 'Logout', 
+      subtitle: 'Sign out of your account',
+      onPress: handleLogout 
+    }
+  ];
+
+  const showDatePicker = () => {
+    setDatePickerVisible(true);
+  };
+
+  const handleDateChange = async (event, date) => {
+    setDatePickerVisible(false);
+    if (date) {
+      setSelectedDate(date);
+      const formattedDate = date.toISOString().split('T')[0];
+      const nutritionData = await loadHistoricalNutrition(formattedDate);
+      showNutritionReport(nutritionData, formattedDate);
+    }
+  };
+
+  const showNutritionReport = (data, date) => {
+    const formattedDate = new Date(date).toLocaleDateString('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const report = `
+Daily Report for ${formattedDate}
+
+Total Macros:
+• Calories: ${Math.round(data.totals.calories)} kcal
+• Protein: ${Math.round(data.totals.protein)}g
+• Carbs: ${Math.round(data.totals.carbs)}g
+• Fat: ${Math.round(data.totals.fat)}g
+
+Meals:
+${data.meals.map(meal => 
+  `${meal.mealCategory}: ${meal.food_name} (${meal.serving_weight_grams}g)
+   ${Math.round(meal.nf_calories)} cal • ${Math.round(meal.nf_protein)}P • ${Math.round(meal.nf_total_carbohydrate)}C • ${Math.round(meal.nf_total_fat)}F`
+).join('\n\n')}
+    `;
+
+    Alert.alert(
+      'Nutrition Report',
+      report,
+      [{ text: 'Close' }],
+      { userInterfaceStyle: 'dark' }
+    );
+  };
+
+  const handleExport = () => {
+    // To be implemented: Export functionality
+    Alert.alert('Coming Soon', 'Export functionality will be available in the next update');
+  };
+
   const MenuButton = ({ icon, title, subtitle, onPress }) => (
     <TouchableOpacity style={styles.menuButton} onPress={onPress}>
       <View style={styles.menuIconContainer}>
@@ -92,10 +181,10 @@ export default function Profile() {
       
       <View style={styles.header}>
         <View style={styles.profileImagePlaceholder}>
-          <Ionicons name="person" size={40} color="#666" />
+          <Ionicons name="person" size={60} color="#666" />
         </View>
-        <Text style={styles.nameText}>{stats.name}</Text>
-        <Text style={styles.subText}>{stats.gender} • {stats.goal}</Text>
+        <Text style={styles.userName}>{stats.name || 'User'}</Text>
+        <Text style={styles.userGoal}>{stats.goal || 'Maintain Weight'}</Text>
       </View>
 
       <View style={styles.statsContainer}>
@@ -105,54 +194,27 @@ export default function Profile() {
       </View>
 
       <View style={styles.menuContainer}>
-        <Text style={styles.sectionTitle}>Progress Tracking</Text>
-        
-        <MenuButton
-          icon="stats-chart"
-          title="Stats Tracker"
-          subtitle="View your progress over time"
-          onPress={() => console.log('Stats Tracker')}
-        />
-        
-        <MenuButton
-          icon="calendar"
-          title="Progress History"
-          subtitle="See your journey timeline"
-          onPress={() => console.log('Progress History')}
-        />
-        
-        <MenuButton
-          icon="create"
-          title="Update Stats"
-          subtitle="Update your current measurements"
-          onPress={handleUpdateStats}
-        />
-        
-        <MenuButton
-          icon="images"
-          title="Progress Photos"
-          subtitle="Track your visual progress"
-          onPress={() => console.log('Progress Photos')}
-        />
+        {menuItems.map((item, index) => (
+          <MenuButton
+            key={index}
+            icon={item.icon}
+            title={item.title}
+            subtitle={item.subtitle}
+            onPress={item.onPress}
+          />
+        ))}
       </View>
 
-      <View style={styles.menuContainer}>
-        <Text style={styles.sectionTitle}>Settings</Text>
-        
-        <MenuButton
-          icon="settings"
-          title="Account Settings"
-          subtitle="Manage your profile settings"
-          onPress={() => console.log('Settings')}
+      {isDatePickerVisible && (
+        <DateTimePicker
+          value={selectedDate}
+          mode="date"
+          display="spinner"
+          onChange={handleDateChange}
+          maximumDate={new Date()}
+          themeVariant="dark"
         />
-
-        <MenuButton
-          icon="log-out"
-          title="Logout"
-          subtitle="Sign out of your account"
-          onPress={handleLogout}
-        />
-      </View>
+      )}
     </ScrollView>
   );
 }
@@ -176,13 +238,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 15,
   },
-  nameText: {
+  userName: {
     color: '#fff',
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 5,
   },
-  subText: {
+  userGoal: {
     color: '#666',
     fontSize: 14,
   },
@@ -257,5 +319,22 @@ const styles = StyleSheet.create({
   },
   menuButtonDestructive: {
     color: '#FF453A',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+    backgroundColor: '#1c1c1e',
+    marginBottom: 1,
+  },
+  menuItemContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  menuItemText: {
+    color: '#fff',
+    fontSize: 17,
+    marginLeft: 12,
   },
 }); 

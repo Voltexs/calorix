@@ -25,6 +25,34 @@ export default function RootLayout() {
             statusBarColor: '#000',
           }}
         />
+        <Stack.Screen 
+          name="body-stats" 
+          options={{
+            headerShown: false,
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen 
+          name="progress-photos" 
+          options={{
+            headerShown: false,
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen 
+          name="fitness-goals" 
+          options={{
+            headerShown: false,
+            presentation: 'modal',
+          }}
+        />
+        <Stack.Screen 
+          name="macro-goals" 
+          options={{
+            headerShown: false,
+            presentation: 'modal',
+          }}
+        />
       </Stack>
     </NutritionProvider>
   );

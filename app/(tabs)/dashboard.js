@@ -147,30 +147,21 @@ const SearchModal = ({ visible, onClose, onSearch, isLoading, searchResults, ren
   );
 };
 
-const getIconForCategory = (categoryName) => {
+const getCategoryIcon = (categoryName) => {
   const name = categoryName.toLowerCase();
-  
-  // Common meal categories
-  if (name.includes('breakfast')) return 'sunny-outline';
-  if (name.includes('lunch')) return 'restaurant-outline';
-  if (name.includes('dinner')) return 'moon-outline';
-  if (name.includes('snack')) return 'cafe-outline';
-  
-  // Workout related
-  if (name.includes('pre') && name.includes('workout')) return 'barbell-outline';
-  if (name.includes('post') && name.includes('workout')) return 'fitness-outline';
-  if (name.includes('protein')) return 'nutrition-outline';
-  
-  // Other common categories
-  if (name.includes('drink') || name.includes('beverage')) return 'water-outline';
-  if (name.includes('fruit')) return 'nutrition-outline';
-  if (name.includes('vegetable') || name.includes('veggies')) return 'leaf-outline';
-  if (name.includes('dessert') || name.includes('sweet')) return 'ice-cream-outline';
-  if (name.includes('meat')) return 'restaurant-outline';
-  if (name.includes('fish') || name.includes('seafood')) return 'fish-outline';
-  
-  // Default icon if no match
-  return 'fast-food-outline';
+  if (name.includes('breakfast')) return 'sunny';
+  if (name.includes('lunch')) return 'restaurant';
+  if (name.includes('dinner')) return 'moon';
+  if (name.includes('snack')) return 'cafe';
+  if (name.includes('pre')) return 'barbell';
+  if (name.includes('post')) return 'fitness';
+  if (name.includes('protein')) return 'nutrition';
+  if (name.includes('carb')) return 'pizza';
+  if (name.includes('fat')) return 'fast-food';
+  if (name.includes('drink')) return 'beer';
+  if (name.includes('fruit')) return 'nutrition';
+  if (name.includes('veg')) return 'leaf';
+  return 'restaurant-outline'; // Default icon for custom categories
 };
 
 export default function Dashboard() {
@@ -433,11 +424,7 @@ export default function Dashboard() {
           activeOpacity={0.7}
         >
           <View style={styles.categoryTitleContainer}>
-            <Ionicons 
-              name={getIconForCategory(category.title)} 
-              size={24} 
-              color="#fff" 
-            />
+            <Ionicons name={getCategoryIcon(category.title)} size={24} color="#fff" />
             <Text style={styles.categoryTitle}>{category.title}</Text>
           </View>
           <View style={styles.rightContainer}>
@@ -714,12 +701,15 @@ export default function Dashboard() {
   const CreateMealModal = ({ visible, onClose }) => {
     const [newMealName, setNewMealName] = useState('');
     
-    const handleCreate = () => {
+    const handleCreate = async () => {
       if (newMealName.trim()) {
-        // Create new meal category
-        saveMealToCategory([], newMealName.trim());
-        setNewMealName('');
-        onClose();
+        const success = await saveMealToCategory(null, newMealName.trim());
+        if (success) {
+          setNewMealName('');
+          onClose();
+          // Remove any existing expanded category
+          setExpandedCategory(null);
+        }
       }
     };
 
@@ -766,7 +756,7 @@ export default function Dashboard() {
         id: key,
         title: key.charAt(0).toUpperCase() + key.slice(1),
         meals: savedMeals[key] || [],
-        icon: getIconForCategory(key)
+        icon: getCategoryIcon(key)
       }));
   }, [savedMeals]);
 
@@ -845,7 +835,7 @@ export default function Dashboard() {
               style={styles.createButton}
               onPress={() => setIsCreatingMeal(true)}
             >
-              <Text style={styles.createButtonText}>Create Meal</Text>
+              <Text style={styles.createButtonText}>Create Category</Text>
             </TouchableOpacity>
           </View>
 
