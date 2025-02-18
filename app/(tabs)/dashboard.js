@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, BlurView, SafeAreaView, Platform, Alert } from 'react-native';
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -69,9 +69,18 @@ const CircularProgress = ({ color, value, goal, label, unit, size, isMain = fals
 const SearchModal = ({ visible, onClose, onSearch, isLoading, searchResults, renderFoodItem }) => {
   const [query, setQuery] = useState('');
   const debounceTimeout = useRef(null);
-  const lastSearchTime = useRef(0);
-  const DEBOUNCE_DELAY = 500;
-  const MIN_SEARCH_INTERVAL = 2000;
+
+  const handleSearch = (text) => {
+    setQuery(text);
+    
+    if (debounceTimeout.current) {
+      clearTimeout(debounceTimeout.current);
+    }
+
+    debounceTimeout.current = setTimeout(() => {
+      onSearch(text);
+    }, 500);
+  };
 
   useEffect(() => {
     return () => {
@@ -90,29 +99,6 @@ const SearchModal = ({ visible, onClose, onSearch, isLoading, searchResults, ren
     }
   }, [visible]);
 
-  const handleSearch = (text) => {
-    setQuery(text);
-    
-    if (debounceTimeout.current) {
-      clearTimeout(debounceTimeout.current);
-    }
-
-    debounceTimeout.current = setTimeout(() => {
-      const now = Date.now();
-      const timeSinceLastSearch = now - lastSearchTime.current;
-      
-      if (timeSinceLastSearch < MIN_SEARCH_INTERVAL) {
-        setTimeout(() => {
-          lastSearchTime.current = Date.now();
-          onSearch(text);
-        }, MIN_SEARCH_INTERVAL - timeSinceLastSearch);
-      } else {
-        lastSearchTime.current = now;
-        onSearch(text);
-      }
-    }, DEBOUNCE_DELAY);
-  };
-
   return (
     <Modal
       animationType="slide"
@@ -122,21 +108,26 @@ const SearchModal = ({ visible, onClose, onSearch, isLoading, searchResults, ren
     >
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
-          <View style={styles.searchHeader}>
-            <View style={styles.searchInputContainer}>
-              <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search food"
-                placeholderTextColor="#666"
-                value={query}
-                onChangeText={handleSearch}
-                autoFocus
-              />
-            </View>
-            <TouchableOpacity onPress={onClose}>
-              <Text style={styles.cancelButton}>Cancel</Text>
+          <View style={styles.modalHeader}>
+            <Text style={styles.headerTitle}>Search Food</Text>
+            <TouchableOpacity 
+              onPress={onClose}
+              style={styles.closeButton}
+            >
+              <Ionicons name="close" size={24} color="#0A84FF" />
             </TouchableOpacity>
+          </View>
+          
+          <View style={styles.searchHeader}>
+            <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search food"
+              placeholderTextColor="#666"
+              value={query}
+              onChangeText={handleSearch}
+              autoFocus
+            />
           </View>
           
           <ScrollView style={styles.resultsContainer}>
@@ -156,9 +147,35 @@ const SearchModal = ({ visible, onClose, onSearch, isLoading, searchResults, ren
   );
 };
 
+const getIconForCategory = (categoryName) => {
+  const name = categoryName.toLowerCase();
+  
+  // Common meal categories
+  if (name.includes('breakfast')) return 'sunny-outline';
+  if (name.includes('lunch')) return 'restaurant-outline';
+  if (name.includes('dinner')) return 'moon-outline';
+  if (name.includes('snack')) return 'cafe-outline';
+  
+  // Workout related
+  if (name.includes('pre') && name.includes('workout')) return 'barbell-outline';
+  if (name.includes('post') && name.includes('workout')) return 'fitness-outline';
+  if (name.includes('protein')) return 'nutrition-outline';
+  
+  // Other common categories
+  if (name.includes('drink') || name.includes('beverage')) return 'water-outline';
+  if (name.includes('fruit')) return 'nutrition-outline';
+  if (name.includes('vegetable') || name.includes('veggies')) return 'leaf-outline';
+  if (name.includes('dessert') || name.includes('sweet')) return 'ice-cream-outline';
+  if (name.includes('meat')) return 'restaurant-outline';
+  if (name.includes('fish') || name.includes('seafood')) return 'fish-outline';
+  
+  // Default icon if no match
+  return 'fast-food-outline';
+};
+
 export default function Dashboard() {
   const router = useRouter();
-  const { dailyNutrition, savedMeals, deleteSavedMeal, saveMealToCategory, addMealToDaily, deleteMealCategory } = useNutrition();
+  const { dailyNutrition, savedMeals, deleteSavedMeal, saveMealToCategory, addMealToDaily, deleteMealCategory, renameSavedCategory, deleteSavedCategory } = useNutrition();
   const [expandedCategory, setExpandedCategory] = useState(null);
   const [selectedMeals, setSelectedMeals] = useState([]);
   const [newMealName, setNewMealName] = useState('');
@@ -263,25 +280,113 @@ export default function Dashboard() {
     }
   ];
 
-  const toggleCategory = (category) => {
-    setExpandedCategory(expandedCategory === category ? null : category);
+  const toggleCategory = (categoryId) => {
+    setExpandedCategory(expandedCategory === categoryId ? null : categoryId);
   };
 
-  const MealCategory = ({ category, meals }) => {
-    const { addMealToDaily, deleteSavedMeal } = useNutrition();
-    const router = useRouter();
+  const MealCategory = ({ category }) => {
+    const { addMealToDaily, deleteSavedMeal, renameSavedCategory, deleteSavedCategory } = useNutrition();
+    const [isRenameModalVisible, setIsRenameModalVisible] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState(category.title);
+    
+    // Memoize the RenameModal component to prevent unnecessary re-renders
+    const RenameModal = useMemo(() => {
+      return (
+        <Modal
+          visible={isRenameModalVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsRenameModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Rename Category</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter new name"
+                placeholderTextColor="#666"
+                value={newCategoryName}
+                onChangeText={(text) => setNewCategoryName(text)}
+                autoFocus
+              />
+              <View style={styles.modalButtons}>
+                <TouchableOpacity 
+                  style={styles.cancelButton} 
+                  onPress={() => {
+                    setIsRenameModalVisible(false);
+                    setNewCategoryName(category.title);
+                  }}
+                >
+                  <Text style={styles.buttonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.createButton, !newCategoryName.trim() && styles.disabledButton]} 
+                  onPress={async () => {
+                    if (newCategoryName.trim()) {
+                      await renameSavedCategory(category.id, newCategoryName.trim());
+                      setIsRenameModalVisible(false);
+                    }
+                  }}
+                  disabled={!newCategoryName.trim()}
+                >
+                  <Text style={styles.buttonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      );
+    }, [isRenameModalVisible, newCategoryName, category.title]);
 
-    const handleLongPress = (meal) => {
+    const handleCategoryLongPress = useCallback(() => {
+      Alert.alert(
+        "Category Options",
+        category.title,
+        [
+          {
+            text: "Rename",
+            onPress: () => {
+              setNewCategoryName(category.title);
+              setIsRenameModalVisible(true);
+            }
+          },
+          {
+            text: "Delete",
+            style: "destructive",
+            onPress: () => {
+              Alert.alert(
+                "Delete Category",
+                "Are you sure you want to delete this category and all its meals?",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  { 
+                    text: "Delete", 
+                    style: "destructive",
+                    onPress: async () => {
+                      await deleteSavedCategory(category.id);
+                    }
+                  }
+                ],
+                { userInterfaceStyle: 'dark' }
+              );
+            }
+          },
+          { text: "Cancel", style: "cancel" }
+        ],
+        { userInterfaceStyle: 'dark' }
+      );
+    }, [category.title, category.id]);
+
+    const handleMealLongPress = (meal) => {
       Alert.alert(
         "Meal Options",
-        `${meal.food_name}`,
+        meal.food_name,
         [
           {
             text: "Edit",
             onPress: () => {
-              // Navigate to edit screen with meal data
               router.push({
-                pathname: '/food-detail',
+                pathname: "/food-detail",
                 params: { food: JSON.stringify(meal), isEditing: true }
               });
             }
@@ -295,11 +400,15 @@ export default function Dashboard() {
                 "Are you sure you want to delete this meal?",
                 [
                   { text: "Cancel", style: "cancel" },
-                  { 
-                    text: "Delete", 
+                  {
+                    text: "Delete",
                     style: "destructive",
                     onPress: async () => {
-                      await deleteSavedMeal(category, meal);
+                      const success = await deleteSavedMeal(category.id, meal);
+                      if (success) {
+                        // Refresh categories after deletion
+                        loadSavedMeals();
+                      }
                     }
                   }
                 ],
@@ -314,47 +423,65 @@ export default function Dashboard() {
     };
 
     return (
-      <View key={category} style={styles.categoryCard}>
-        <View style={styles.categoryHeader}>
-          <View style={styles.categoryLeft}>
+      <View style={styles.categoryContainer}>
+        {RenameModal}
+        <TouchableOpacity 
+          style={styles.categoryHeader} 
+          onPress={() => toggleCategory(category.id)}
+          onLongPress={handleCategoryLongPress}
+          delayLongPress={500}
+          activeOpacity={0.7}
+        >
+          <View style={styles.categoryTitleContainer}>
             <Ionicons 
-              name={category === 'breakfast' ? 'sunny' :
-                    category === 'lunch' ? 'restaurant' :
-                    category === 'dinner' ? 'moon' :
-                    'nutrition'} 
+              name={getIconForCategory(category.title)} 
+              size={24} 
+              color="#fff" 
+            />
+            <Text style={styles.categoryTitle}>{category.title}</Text>
+          </View>
+          <View style={styles.rightContainer}>
+            <Text style={styles.mealCount}>{category.meals.length}</Text>
+            <Ionicons 
+              name={expandedCategory === category.id ? 'chevron-up' : 'chevron-down'} 
               size={24} 
               color="#666" 
             />
-            <Text style={styles.categoryTitle}>
-              {category.charAt(0).toUpperCase() + category.slice(1)}
-            </Text>
           </View>
-          <TouchableOpacity 
-            style={styles.addButton}
-            onPress={() => setIsCreatingMeal(true)}
-          >
-            <Ionicons name="add-circle" size={24} color="#0A84FF" />
-          </TouchableOpacity>
-        </View>
-        
-        {meals.map((meal, index) => (
-          <TouchableOpacity 
-            key={index} 
-            style={styles.mealItem}
-            onPress={() => addMealToDaily(meal)}
-            onLongPress={() => handleLongPress(meal)}
-            delayLongPress={500}
-            activeOpacity={0.7}
-          >
-            <View style={styles.mealItemLeft}>
-              <Text style={styles.mealName}>{meal.food_name} ({meal.serving_weight_grams}g)</Text>
-              <Text style={styles.macros}>
-                {Math.round(meal.nf_calories)} cal • {Math.round(meal.nf_protein)}P • 
-                {Math.round(meal.nf_total_carbohydrate)}C • {Math.round(meal.nf_total_fat)}F
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
+        </TouchableOpacity>
+
+        {expandedCategory === category.id && (
+          <View style={styles.mealsContainer}>
+            {category.meals.length > 0 ? (
+              category.meals.map((meal, index) => (
+                <TouchableOpacity 
+                  key={`${meal.food_name}-${index}`} 
+                  style={styles.mealItem}
+                  onPress={() => addMealToDaily(meal, category.title)}
+                  onLongPress={() => handleMealLongPress(meal)}
+                  delayLongPress={500}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.mealItemLeft}>
+                    <Text style={styles.mealName}>
+                      {meal.food_name} ({meal.serving_weight_grams}g)
+                    </Text>
+                    <Text style={styles.macros}>
+                      {Math.round(meal.nf_calories)} cal • 
+                      {Math.round(meal.nf_protein)}P • 
+                      {Math.round(meal.nf_total_carbohydrate)}C • 
+                      {Math.round(meal.nf_total_fat)}F
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>No meals added yet</Text>
+              </View>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -632,6 +759,17 @@ export default function Dashboard() {
     );
   };
 
+  // Get all categories from savedMeals without filtering empty ones
+  const categories = useMemo(() => {
+    return Object.keys(savedMeals)
+      .map(key => ({
+        id: key,
+        title: key.charAt(0).toUpperCase() + key.slice(1),
+        meals: savedMeals[key] || [],
+        icon: getIconForCategory(key)
+      }));
+  }, [savedMeals]);
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -711,8 +849,11 @@ export default function Dashboard() {
             </TouchableOpacity>
           </View>
 
-          {Object.entries(savedMeals).map(([category, meals]) => (
-            <MealCategory key={category} category={category} meals={meals} />
+          {categories.map(category => (
+            <MealCategory 
+              key={category.id} 
+              category={category}
+            />
           ))}
         </View>
       </ScrollView>
@@ -795,9 +936,7 @@ const styles = StyleSheet.create({
     height: 40, // Fixed height to prevent double line
   },
   cancelButton: {
-    color: '#0A84FF',
-    marginLeft: 10,
-    fontSize: 16,
+    padding: 10,
   },
   loader: {
     marginTop: 20,
@@ -900,32 +1039,41 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     overflow: 'hidden',
   },
+  categoryContainer: {
+    marginBottom: 8,
+    backgroundColor: '#2c2c2e',
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
   categoryHeader: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 16,
-    backgroundColor: '#2c2c2e',
+    backgroundColor: '#1c1c1e',
   },
-  categoryLeft: {
+  categoryTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
   },
-  categoryRight: {
+  rightContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
   },
   categoryTitle: {
-    color: '#fff',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
-    marginLeft: 12,
+    color: '#fff',
+    marginLeft: 8,
   },
   mealCount: {
+    fontSize: 16,
     color: '#666',
-    fontSize: 14,
+  },
+  mealsContainer: {
+    borderTopWidth: 1,
+    borderTopColor: '#3c3c3e',
   },
   mealItem: {
     flexDirection: 'row',
@@ -1052,64 +1200,86 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
-    alignItems: 'center',
   },
   modalContent: {
     backgroundColor: '#1c1c1e',
-    borderRadius: 15,
+    borderRadius: 12,
     padding: 20,
-    width: '80%',
-  },
-  searchHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingBottom: 15,
-  },
-  searchInputContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#333',
-    borderRadius: 10,
-    marginRight: 10,
-    paddingHorizontal: 10,
-  },
-  searchInput: {
-    flex: 1,
-    color: '#fff',
-    fontSize: 16,
-    padding: 10,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  cancelButton: {
-    color: '#0A84FF',
-    fontSize: 16,
-  },
-  resultsContainer: {
-    maxHeight: '100%',
-  },
-  loader: {
-    padding: 20,
+    margin: 20,
+    marginTop: 'auto',
+    marginBottom: 'auto',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 15,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#333',
+    borderBottomColor: '#2c2c2e',
+    backgroundColor: '#1c1c1e',
+  },
+  headerTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  searchHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    backgroundColor: '#1c1c1e',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2c2c2e',
+    paddingHorizontal: 16,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 16,
+    marginLeft: 8,
+    paddingVertical: 8,
+  },
+  cancelButton: {
+    padding: 10,
+  },
+  createButton: {
+    padding: 10,
+  },
+  buttonText: {
+    color: '#0A84FF',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  input: {
+    backgroundColor: '#2c2c2e',
+    borderRadius: 8,
+    padding: 12,
+    color: '#fff',
+    fontSize: 16,
+    marginTop: 16,
   },
   modalTitle: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
-    marginBottom: 15,
+    marginBottom: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 20,
+    paddingHorizontal: 10,
   },
   closeButton: {
-    padding: 5,
+    padding: 8,
   },
   calendarContainer: {
     flex: 1,
@@ -1159,9 +1329,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  createButton: {
-    padding: 8,
-  },
   createButtonText: {
     color: '#0A84FF',
     fontSize: 16,
@@ -1200,23 +1367,14 @@ const styles = StyleSheet.create({
     padding: 8,
     marginRight: 8,
   },
-  input: {
-    backgroundColor: '#2c2c2e',
-    borderRadius: 10,
-    padding: 12,
-    color: '#fff',
-    marginBottom: 15,
+  closeButtonText: {
+    color: '#0A84FF',
+    fontSize: 16,
+    fontWeight: '500',
   },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-  },
-  buttonText: {
-    color: '#fff',
-    fontWeight: '600',
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
+  mealCategory: {
+    marginBottom: 16,
+    backgroundColor: '#1c1c1e',
+    borderRadius: 12,
+  }
 }); 

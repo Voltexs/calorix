@@ -1,5 +1,5 @@
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert } from 'react-native';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useNutrition } from '../context/NutritionContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,6 +29,21 @@ const getCategoryIcon = (category) => {
     default:
       return 'nutrition';
   }
+};
+
+const organizedMeals = (meals = []) => {
+  const categories = {};
+  meals.forEach(meal => {
+    const category = meal.mealCategory || 'Uncategorized';
+    if (!categories[category]) {
+      categories[category] = [];
+    }
+    categories[category].push(meal);
+  });
+  return Object.entries(categories).map(([category, meals]) => ({
+    category,
+    meals
+  }));
 };
 
 export default function MealPlan() {
@@ -139,18 +154,12 @@ export default function MealPlan() {
           text: "Delete", 
           style: "destructive",
           onPress: async () => {
-            await removeMeal(index);
-            // Refresh the meals after deletion
-            const updatedMeals = await loadHistoricalNutrition(selectedDate);
-            setSelectedDayMeals(updatedMeals || {
-              meals: [],
-              totals: {
-                calories: 0,
-                protein: 0,
-                carbs: 0,
-                fat: 0
-              }
-            });
+            const success = await removeMeal(meal);
+            if (success) {
+              // Refresh the meals after deletion
+              const updatedNutrition = await loadHistoricalNutrition(selectedDate);
+              setSelectedDayMeals(updatedNutrition);
+            }
           }
         }
       ],
@@ -262,15 +271,15 @@ export default function MealPlan() {
       </View>
 
       <View style={styles.mealsContainer}>
-        {['Breakfast', 'Lunch', 'Dinner', 'Snack', 'Pre-Workout', 'Post-Workout'].map(category => {
-          const categoryMeals = selectedDayMeals.meals.filter(
-            meal => meal.mealCategory === category
-          );
-          if (categoryMeals.length > 0) {
-            return renderMealCategory(category, categoryMeals);
-          }
-          return null;
-        })}
+        {selectedDayMeals?.meals?.length > 0 ? (
+          organizedMeals(selectedDayMeals.meals).map(({ category, meals }) => 
+            renderMealCategory(category, meals)
+          )
+        ) : (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No meals added for this day</Text>
+          </View>
+        )}
       </View>
     </ScrollView>
   );
@@ -456,5 +465,14 @@ const styles = StyleSheet.create({
   deleteButton: {
     padding: 8,
     marginLeft: 8,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#666',
+    fontSize: 16,
   },
 }); 

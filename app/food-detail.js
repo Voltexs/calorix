@@ -5,38 +5,33 @@ import { Picker } from '@react-native-picker/picker';
 import { useNutrition } from './context/NutritionContext';
 import { Ionicons } from '@expo/vector-icons';
 
-const MEAL_CATEGORIES = [
-  'Breakfast',
-  'Lunch',
-  'Dinner',
-  'Snack',
-  'Pre-Workout',
-  'Post-Workout'
-];
-
 const BACKGROUND_COLOR = '#1c1c1e';
 const TEXT_COLOR = '#fff';
 
 export default function FoodDetail() {
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { addMealToDaily, saveMealToCategory } = useNutrition();
-  const [mealCategory, setMealCategory] = useState('Breakfast');
+  const isEditing = params.isEditing === 'true';
+  const { addMealToDaily, saveMealToCategory, savedMeals, updateSavedMeal } = useNutrition();
+  const food = JSON.parse(params.food);
   
+  // Pre-fill values if editing
+  const [quantity, setQuantity] = useState(isEditing ? food.serving_weight_grams.toString() : '100');
+  const [mealCategory, setMealCategory] = useState(isEditing ? food.mealCategory : '');
+
+  // Get all categories without filtering
+  const existingCategories = useMemo(() => {
+    return Object.keys(savedMeals)
+      .map(key => key.charAt(0).toUpperCase() + key.slice(1));
+  }, [savedMeals]);
+
   // Parse the food data and get initial serving details
-  const { food, initialQuantity } = useMemo(() => {
-    let parsedFood;
-    if (typeof params.food === 'string') {
-      parsedFood = JSON.parse(params.food);
-    } else {
-      parsedFood = params.food;
-    }
-    
+  const { initialQuantity } = useMemo(() => {
     // Use the serving quantity from the parsed food data
-    const qty = parsedFood.serving_qty?.toString() || '100';
+    const qty = food.serving_qty?.toString() || '100';
     
-    return { food: parsedFood, initialQuantity: qty };
-  }, [params.food]);
+    return { initialQuantity: qty };
+  }, [food]);
 
   // Initialize serving options without duplicates
   const servingOptions = useMemo(() => {
@@ -56,7 +51,6 @@ export default function FoodDetail() {
   }, [food]);
 
   // Set initial quantity and measure based on API response
-  const [quantity, setQuantity] = useState(initialQuantity);
   const [selectedMeasure, setSelectedMeasure] = useState(() => {
     // Find the measure that matches the serving_unit from the API
     const initialMeasure = servingOptions.find(m => m.measure === food.serving_unit) || servingOptions[0];
@@ -71,24 +65,26 @@ export default function FoodDetail() {
     return baseValue * scaleFactor;
   };
 
-  const handleAddMeal = () => {
-    const mealData = {
-      food_name: food.food_name,
-      serving_qty: parseFloat(quantity),
-      serving_unit: selectedMeasure.measure,
-      serving_weight_grams: selectedMeasure.measure === 'g' 
-        ? parseFloat(quantity)
-        : (selectedMeasure.serving_weight * parseFloat(quantity)),
-      mealCategory,
-      nf_calories: calculateNutrition(food.nf_calories, parseFloat(quantity), food.serving_weight_grams),
-      nf_protein: calculateNutrition(food.nf_protein, parseFloat(quantity), food.serving_weight_grams),
-      nf_total_carbohydrate: calculateNutrition(food.nf_total_carbohydrate, parseFloat(quantity), food.serving_weight_grams),
-      nf_total_fat: calculateNutrition(food.nf_total_fat, parseFloat(quantity), food.serving_weight_grams),
-      thumb: food.photo?.thumb
+  const handleAddMeal = async () => {
+    const adjustedMeal = {
+      ...food,
+      serving_weight_grams: parseInt(quantity),
+      nf_calories: (food.nf_calories * parseInt(quantity)) / food.serving_weight_grams,
+      nf_protein: (food.nf_protein * parseInt(quantity)) / food.serving_weight_grams,
+      nf_total_carbohydrate: (food.nf_total_carbohydrate * parseInt(quantity)) / food.serving_weight_grams,
+      nf_total_fat: (food.nf_total_fat * parseInt(quantity)) / food.serving_weight_grams,
+      id: `${food.food_name}-${Date.now()}`,
+      mealCategory: mealCategory  // Ensure we pass the selected category
     };
+
+    // Add to daily meals with the selected category
+    const success = await addMealToDaily(adjustedMeal, mealCategory);
     
-    addMealToDaily(mealData);
-    router.back();
+    if (success) {
+      // Also save to category if successful
+      await saveMealToCategory(adjustedMeal, mealCategory);
+      router.back();
+    }
   };
 
   const handleSaveToCategory = async () => {
@@ -112,6 +108,25 @@ export default function FoodDetail() {
       router.back();
     } else {
       Alert.alert('Error', 'Failed to save meal to category');
+    }
+  };
+
+  const handleSave = async () => {
+    if (isEditing) {
+      // Handle editing existing meal
+      const updatedMeal = {
+        ...food,
+        serving_weight_grams: parseInt(quantity),
+        mealCategory
+      };
+      // Update the meal in the category
+      const success = await updateSavedMeal(updatedMeal);
+      if (success) {
+        router.back();
+      }
+    } else {
+      // Handle saving new meal
+      handleSaveToCategory();
     }
   };
 
@@ -259,7 +274,7 @@ export default function FoodDetail() {
                   mode="dropdown"
                   backgroundColor="#1c1c1e"
                 >
-                  {MEAL_CATEGORIES.map((category, index) => (
+                  {existingCategories.map((category, index) => (
                     <Picker.Item
                       key={index}
                       label={category}
@@ -290,9 +305,11 @@ export default function FoodDetail() {
               
               <TouchableOpacity 
                 style={[styles.actionButton, styles.saveButton]}
-                onPress={handleSaveToCategory}
+                onPress={handleSave}
               >
-                <Text style={styles.buttonText}>Save to {mealCategory}</Text>
+                <Text style={styles.buttonText}>
+                  {isEditing ? 'Update Meal' : `Save to ${mealCategory}`}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

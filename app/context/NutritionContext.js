@@ -204,22 +204,39 @@ export function NutritionProvider({ children }) {
     }
   };
 
-  const addMealToDaily = async (meal) => {
+  const addMealToDaily = async (meal, mealCategory) => {
     try {
       const today = new Date().toISOString().split('T')[0];
-      const newMeals = [...dailyNutrition.meals, meal];
-      const newTotals = calculateTotals(newMeals);
-
-      const newDailyNutrition = {
+      
+      // Get current daily nutrition with the correct key format
+      const currentDaily = await AsyncStorage.getItem(`nutrition_${today}`);
+      const dailyData = currentDaily ? JSON.parse(currentDaily) : {
         date: today,
-        meals: newMeals,
-        totals: newTotals,
-        goals: dailyNutrition.goals || {}
+        meals: [],
+        totals: {
+          calories: 0,
+          protein: 0,
+          carbs: 0,
+          fat: 0
+        }
       };
 
-      await AsyncStorage.setItem(`nutrition_${today}`, JSON.stringify(newDailyNutrition));
-      setDailyNutrition(newDailyNutrition);
-      await notifyNutritionChange(today);
+      // Add the meal with the correct category
+      const mealWithCategory = {
+        ...meal,
+        id: `${meal.food_name}-${Date.now()}`,
+        mealCategory: meal.mealCategory || mealCategory || 'Breakfast', // Prioritize existing category
+        timestamp: new Date().toISOString()
+      };
+      
+      // Update meals and totals
+      dailyData.meals.push(mealWithCategory);
+      dailyData.totals = calculateTotals(dailyData.meals);
+
+      // Save with the correct key format
+      await AsyncStorage.setItem(`nutrition_${today}`, JSON.stringify(dailyData));
+      setDailyNutrition(dailyData);
+
       return true;
     } catch (error) {
       console.error('Error adding meal to daily:', error);
@@ -227,41 +244,23 @@ export function NutritionProvider({ children }) {
     }
   };
 
-  const removeMeal = async (index) => {
+  const removeMeal = async (mealToRemove) => {
     try {
       const today = new Date().toISOString().split('T')[0];
+      const currentDaily = await AsyncStorage.getItem(`nutrition_${today}`);
+      const dailyData = currentDaily ? JSON.parse(currentDaily) : {};
       
-      const newNutrition = await new Promise(resolve => {
-        setDailyNutrition(prev => {
-          if (!prev.meals || !prev.meals[index]) {
-            resolve(prev);
-            return prev;
-          }
-
-          const removedMeal = prev.meals[index];
-          const newMeals = prev.meals.filter((_, i) => i !== index);
-          
-          const newTotals = {
-            calories: Math.max(0, (prev.totals?.calories || 0) - (removedMeal?.nf_calories || 0)),
-            protein: Math.max(0, (prev.totals?.protein || 0) - (removedMeal?.nf_protein || 0)),
-            carbs: Math.max(0, (prev.totals?.carbs || 0) - (removedMeal?.nf_total_carbohydrate || 0)),
-            fat: Math.max(0, (prev.totals?.fat || 0) - (removedMeal?.nf_total_fat || 0))
-          };
-
-          const newNutrition = {
-            ...prev,
-            meals: newMeals,
-            totals: newTotals,
-            date: today
-          };
-
-          resolve(newNutrition);
-          return newNutrition;
-        });
-      });
+      const updatedMeals = dailyData.meals.filter(meal => meal.id !== mealToRemove.id);
+      const updatedTotals = calculateTotals(updatedMeals);
+      
+      const newNutrition = {
+        ...dailyData,
+        meals: updatedMeals,
+        totals: updatedTotals
+      };
 
       await AsyncStorage.setItem(`nutrition_${today}`, JSON.stringify(newNutrition));
-      await notifyNutritionChange(today);
+      setDailyNutrition(newNutrition);
       return true;
     } catch (error) {
       console.error('Error removing meal:', error);
@@ -289,21 +288,17 @@ export function NutritionProvider({ children }) {
     }
   };
 
-  const deleteSavedMeal = async (category, mealToDelete) => {
+  const deleteSavedMeal = async (categoryId, mealToDelete) => {
     try {
-      const categoryKey = category.toLowerCase().replace(/\s+/g, '');
-      const newMeals = savedMeals[categoryKey].filter(meal => 
-        meal.food_name !== mealToDelete.food_name || 
-        meal.serving_qty !== mealToDelete.serving_qty
-      );
-      
-      const newSavedMeals = {
+      const updatedMeals = {
         ...savedMeals,
-        [categoryKey]: newMeals
+        [categoryId]: savedMeals[categoryId].filter(
+          meal => meal.id !== mealToDelete.id
+        )
       };
       
-      setSavedMeals(newSavedMeals);
-      await AsyncStorage.setItem('savedMeals', JSON.stringify(newSavedMeals));
+      await AsyncStorage.setItem('savedMeals', JSON.stringify(updatedMeals));
+      setSavedMeals(updatedMeals);
       return true;
     } catch (error) {
       console.error('Error deleting saved meal:', error);
@@ -330,6 +325,47 @@ export function NutritionProvider({ children }) {
     }
   };
 
+  const renameSavedCategory = async (categoryId, newName) => {
+    try {
+      // Create new category ID from the new name
+      const newCategoryId = newName.toLowerCase().replace(/\s+/g, '');
+      const updatedMeals = { ...savedMeals };
+      
+      // Keep the same meals but under the new category name
+      updatedMeals[newCategoryId] = savedMeals[categoryId];
+      
+      // Remove the old category if the name changed
+      if (categoryId !== newCategoryId) {
+        delete updatedMeals[categoryId];
+      }
+
+      await AsyncStorage.setItem('savedMeals', JSON.stringify(updatedMeals));
+      setSavedMeals(updatedMeals);
+      
+      // Show success message
+      Alert.alert('Success', 'Category renamed successfully');
+      return true;
+    } catch (error) {
+      console.error('Error renaming category:', error);
+      Alert.alert('Error', 'Failed to rename category');
+      return false;
+    }
+  };
+
+  const deleteSavedCategory = async (categoryId) => {
+    try {
+      const updatedMeals = { ...savedMeals };
+      delete updatedMeals[categoryId];
+      
+      await AsyncStorage.setItem('savedMeals', JSON.stringify(updatedMeals));
+      setSavedMeals(updatedMeals);
+      return true;
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      return false;
+    }
+  };
+
   return (
     <NutritionContext.Provider value={{
       dailyNutrition,
@@ -343,7 +379,9 @@ export function NutritionProvider({ children }) {
       loadSavedMeals,
       clearNutritionGoals,
       deleteSavedMeal,
-      deleteMealCategory
+      deleteMealCategory,
+      renameSavedCategory,
+      deleteSavedCategory
     }}>
       {children}
     </NutritionContext.Provider>
